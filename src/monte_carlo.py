@@ -20,7 +20,7 @@ def MCEuropean(n_paths, s0, K, r, sigma, T, option_type, N=None):
         payoff = lambda s: np.maximum(K - s, 0)
 
     opt_vals = np.exp(-r * T) * payoff(underlying_T)
-    
+
     val = np.mean(opt_vals)
     variance = np.var(opt_vals) / n_paths
 
@@ -47,11 +47,17 @@ class MLMC:
         self.sigma = option_params["sigma"]
         self.T = option_params["T"]
         self.option_type = option_params["option_type"]
+        self.chol_correlation = None
 
         if self.option_type == 'call':
             self.payoff = lambda s: np.maximum(s - self.K, 0)
         elif self.option_type == 'put':
             self.payoff = lambda s: np.maximum(self.K - s, 0)
+        elif self.option_type == 'basket_call':
+            self.c = option_params["c"]
+            self.chol_correlation = option_params["L"]
+            self.payoff = lambda s: np.maximum(self.c @ s - self.K, 0)
+
 
         self.L = 0
         self.m_L = 10 ** 4
@@ -107,7 +113,7 @@ class MLMC:
                     num_sols = np.empty((2, m_l, d)).squeeze()
 
             if l == 0:
-                num_sols = self.solver(self.r, self.sigma, self.s0, self.M ** l, self.T, m_l)
+                num_sols = self.solver(self.r, self.sigma, self.s0, self.M ** l, self.T, m_l, chol_correlation=self.chol_correlation)
                 opt_vals = self.payoff(num_sols) if d == 1 else self.payoff(num_sols.T)
                 estSum += np.sum(opt_vals)
                 estSumSq += np.sum(opt_vals ** 2)
@@ -117,8 +123,8 @@ class MLMC:
                 W = wienerprocess(self.T, self.M ** l, d * m_l).reshape(self.M ** l + 1, m_l, d).squeeze()
                 t_eval = np.arange(0, self.M ** l + 1, self.M)
 
-                num_sols[0] = self.solver(self.r, self.sigma, self.s0, self.M ** (l - 1), self.T, W[t_eval])
-                num_sols[1] = self.solver(self.r, self.sigma, self.s0, self.M ** l, self.T, W)
+                num_sols[0] = self.solver(self.r, self.sigma, self.s0, self.M ** (l - 1), self.T, W[t_eval], chol_correlation=self.chol_correlation)
+                num_sols[1] = self.solver(self.r, self.sigma, self.s0, self.M ** l, self.T, W, chol_correlation=self.chol_correlation)
 
                 opt_vals = self.payoff(num_sols.reshape(2, d, m_l).squeeze())
 
